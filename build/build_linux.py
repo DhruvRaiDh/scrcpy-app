@@ -81,9 +81,12 @@ pyinstaller_cmd = [
     '--hidden-import', 'fastapi',
     '--hidden-import', 'starlette',
     '--hidden-import', 'anyio._backends._asyncio',
-    '--hidden-import', 'webview',
     '--hidden-import', 'pkg_resources',
     '--collect-data', 'setuptools',
+    # Exclude pywebview on Linux — we open system browser instead (no GTK required)
+    '--exclude-module', 'webview',
+    '--exclude-module', 'gi',
+    '--exclude-module', 'gtk',
     'main.py',
 ]
 run(pyinstaller_cmd, cwd=BACKEND)

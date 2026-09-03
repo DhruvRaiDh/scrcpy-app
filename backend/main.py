@@ -1,7 +1,7 @@
 """
 Android Control Center — Main Entry Point
 - Starts FastAPI backend on localhost:8412
-- Opens pywebview desktop window with the React UI
+- Opens pywebview desktop window (Windows) OR system browser (Linux)
 - Cross-platform: Windows .exe and Linux binary
 """
 import os
@@ -11,11 +11,13 @@ import time
 import logging
 import webbrowser
 import platform
+import subprocess
 
 logging.basicConfig(level=logging.INFO, format='[ACC] %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX   = platform.system() == "Linux"
 
 # ── Resource Path Resolution ───────────────────────────────────────────────────
 def resource_path(relative: str) -> str:
@@ -67,7 +69,7 @@ def run_server():
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 
-def wait_for_server(timeout: int = 10) -> bool:
+def wait_for_server(timeout: int = 15) -> bool:
     import urllib.request
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -79,9 +81,26 @@ def wait_for_server(timeout: int = 10) -> bool:
     return False
 
 
+def open_browser(url: str):
+    """Open system browser with multiple fallbacks for Linux."""
+    # Try xdg-open first (works on all Linux desktops)
+    if IS_LINUX:
+        for cmd in ['xdg-open', 'sensible-browser', 'firefox', 'chromium-browser', 'chromium', 'google-chrome']:
+            try:
+                subprocess.Popen([cmd, url],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                logger.info(f"Opened browser using: {cmd}")
+                return
+            except FileNotFoundError:
+                continue
+    # Windows / Mac fallback
+    webbrowser.open(url)
+
+
 def main():
     # On first launch, ensure tools directory is set to the default location
-    # This allows auto-download to begin immediately without user interaction
     from services.config import get_tools_dir, set_tools_dir, get_default_tools_dir
     if not get_tools_dir():
         set_tools_dir(get_default_tools_dir())
@@ -100,29 +119,46 @@ def main():
         sys.exit(1)
 
     url = f"http://127.0.0.1:{PORT}"
+    logger.info(f"App running at: {url}")
 
-    # Try to open pywebview (native window), fall back to browser
-    try:
-        import webview
-        logger.info("Opening native desktop window via pywebview...")
-        webview.create_window(
-            title="Android Control Center",
-            url=url,
-            width=1060,
-            height=720,
-            min_size=(820, 580),
-            resizable=True,
-        )
-        webview.start()
-    except ImportError:
-        logger.warning("pywebview not available, opening in system browser instead.")
-        webbrowser.open(url)
-        # Keep server alive
+    if IS_LINUX:
+        # On Linux: always open the system browser — no GTK dependency
+        # pywebview requires libwebkit2gtk which may not be installed on Ubuntu
+        logger.info("Linux detected — opening system browser (no GTK required).")
+        open_browser(url)
+        print(f"\n{'='*50}")
+        print(f"  Android Control Center is running!")
+        print(f"  Open your browser at: {url}")
+        print(f"  Press Ctrl+C to quit.")
+        print(f"{'='*50}\n")
+        # Keep server alive until user presses Ctrl+C
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            pass
+            logger.info("Shutting down.")
+    else:
+        # Windows: use native pywebview window
+        try:
+            import webview
+            logger.info("Opening native desktop window via pywebview...")
+            webview.create_window(
+                title="Android Control Center",
+                url=url,
+                width=1060,
+                height=720,
+                min_size=(820, 580),
+                resizable=True,
+            )
+            webview.start()
+        except ImportError:
+            logger.warning("pywebview not available, opening in system browser instead.")
+            webbrowser.open(url)
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
 
 
 if __name__ == "__main__":
