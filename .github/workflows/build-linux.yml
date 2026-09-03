@@ -53,15 +53,68 @@ jobs:
           chmod +x build/build_linux.py
           python3 build/build_linux.py
 
-      - name: Verify Binary
+      - name: Verify Binary and Create Launchers
         run: |
           file dist/linux/scrcpy-app
           ls -lh dist/linux/scrcpy-app
           chmod +x dist/linux/scrcpy-app
 
-      - name: Upload Standalone Linux Binary
+          # Create start.sh helper
+          cat << 'EOF' > dist/linux/start.sh
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+chmod +x "$DIR/scrcpy-app"
+"$DIR/scrcpy-app" "$@"
+EOF
+          chmod +x dist/linux/start.sh
+
+          # Create install-shortcut.sh to add to Ubuntu App menu
+          cat << 'EOF' > dist/linux/install-shortcut.sh
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+chmod +x "$DIR/scrcpy-app"
+DESKTOP_FILE="$HOME/.local/share/applications/scrcpy-app.desktop"
+mkdir -p "$HOME/.local/share/applications"
+cat << DESKTOPEOF > "$DESKTOP_FILE"
+[Desktop Entry]
+Name=Android Control Center
+Comment=Mirror and control Android devices via scrcpy
+Exec=$DIR/scrcpy-app
+Terminal=true
+Type=Application
+Categories=Utility;Development;
+DESKTOPEOF
+chmod +x "$DESKTOP_FILE"
+echo "✅ Desktop shortcut created in Ubuntu Applications menu!"
+EOF
+          chmod +x dist/linux/install-shortcut.sh
+
+          # Add README.txt
+          cat << 'EOF' > dist/linux/README.txt
+Android Control Center (Linux Standalone)
+=========================================
+
+How to run on Ubuntu:
+
+Option 1: In terminal, run:
+    bash start.sh
+    (or ./scrcpy-app)
+
+Option 2: Add to your Ubuntu Application Menu (1-click launch):
+    bash install-shortcut.sh
+    Then search "Android Control Center" in your apps!
+
+Requirements:
+- None! ADB and scrcpy are already bundled inside.
+- Works 100% offline.
+EOF
+
+          ls -la dist/linux/
+
+      - name: Upload Standalone Linux Package
         uses: actions/upload-artifact@v4
         with:
           name: scrcpy-app-linux
-          path: dist/linux/scrcpy-app
+          path: dist/linux/
           retention-days: 14
+

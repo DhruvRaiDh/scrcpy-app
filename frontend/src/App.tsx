@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Component } from 'react';
 import {
   Smartphone, RefreshCw, Wifi, Usb, AlertCircle, CheckCircle2,
   Loader2, Cast, Plug, Radio, ArrowLeft, Home, Square,
@@ -7,6 +7,26 @@ import {
   X, KeyRound, FolderOpen,
 } from 'lucide-react';
 import { get, post } from './lib/api';
+
+// ── Error Boundary — catches any JS crash and shows a message instead of blank page ──
+class ErrorBoundary extends Component<{children: React.ReactNode}, {error: string | null}> {
+  constructor(props: any) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e: Error) { return { error: e.message }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        height:'100vh', background:'#0a0d12', color:'#e8edf5', fontFamily:'Inter,sans-serif', gap:16, padding:32, textAlign:'center' }}>
+        <AlertCircle size={48} color="#ef4444" />
+        <div style={{ fontSize:20, fontWeight:600 }}>App Error</div>
+        <div style={{ color:'#8a96b0', maxWidth:480 }}>{this.state.error}</div>
+        <button onClick={() => window.location.reload()}
+          style={{ marginTop:8, padding:'10px 24px', background:'#3b82f6', border:'none',
+            borderRadius:8, color:'#fff', cursor:'pointer', fontSize:14 }}>Reload</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Device {
@@ -72,6 +92,17 @@ function PairCodeModal({
   );
 }
 
+// ── Startup Screen — shown while backend is booting ──────────────────────────
+function StartupScreen({ message }: { message: string }) {
+  return (
+    <div className="download-screen">
+      <Loader2 size={52} className="download-screen__icon spin" style={{ color: 'var(--accent)' }} />
+      <div className="download-screen__title">Android Control Center</div>
+      <div className="download-screen__msg">{message}</div>
+    </div>
+  );
+}
+
 // ── Download Screen ────────────────────────────────────────────────────────────
 function DownloadScreen({ progress }: { progress: DownloadProgress }) {
   return (
@@ -107,43 +138,60 @@ export default function App() {
   const [customText, setCustomText] = useState('');
   const rightPanelRef = useRef<HTMLDivElement>(null);
 
-  const [needsFolderSetup, setNeedsFolderSetup] = useState(false);
+  // appReady: false = backend not yet responding, show startup screen
+  const [appReady, setAppReady] = useState(false);
+  const [startupMsg, setStartupMsg] = useState('Starting up, please wait...');
 
-  // ── Poll download progress if tools missing ──────────────────────────────────
+  // ── Poll download progress + startup init ─────────────────────────────────────
   useEffect(() => {
     let timer: ReturnType<typeof setInterval>;
+
     const checkDownload = async () => {
       try {
         const prog = await get<DownloadProgress>('/tools/progress');
         if (prog.phase === 'idle') {
-          // nothing yet
+          // nothing in progress
         } else if (prog.phase === 'done') {
+          // Download finished — load main UI
           setDownloadProgress(null);
           clearInterval(timer);
-          scan();
-        } else if (prog.phase === 'error') {
-          setDownloadProgress(prog);
-        } else {
-          setDownloadProgress(prog);
-        }
-      } catch { /* backend not ready yet */ }
-    };
-
-    // On startup: tools are bundled on Linux — no folder picker needed ever
-    const init = async () => {
-      try {
-        const s = await get<ToolsStatus>('/tools/status');
-        if (!s.installed) {
-          // Auto-download (handles both bundled-tools copy and actual internet download)
-          await post('/tools/use-default-folder', {});
-          await post('/tools/download', {});
-        } else {
           const sFull = await get<StatusResp>('/status');
           setStatus(sFull);
           autoSelectDevice(sFull.devices);
           setScanning(false);
+          setAppReady(true);
+        } else if (prog.phase === 'error') {
+          setDownloadProgress(prog);
+          setAppReady(true); // Show the error to the user
+        } else {
+          setDownloadProgress(prog);
+          setAppReady(true); // Show download progress
+        }
+      } catch { /* backend not ready yet — keep polling */ }
+    };
+
+    const init = async () => {
+      try {
+        setStartupMsg('Connecting to backend...');
+        const s = await get<ToolsStatus>('/tools/status');
+        // Backend is alive
+        if (!s.installed) {
+          // Tools not installed — trigger setup/download
+          setStartupMsg('Preparing tools...');
+          await post('/tools/use-default-folder', {});
+          await post('/tools/download', {});
+          // checkDownload polling will transition appReady once progress is known
+        } else {
+          // Tools ready — go straight to main UI
+          setStartupMsg('Loading devices...');
+          const sFull = await get<StatusResp>('/status');
+          setStatus(sFull);
+          autoSelectDevice(sFull.devices);
+          setScanning(false);
+          setAppReady(true);
         }
       } catch {
+        setStartupMsg('Waiting for backend to start...');
         setTimeout(init, 800);
       }
     };
@@ -153,30 +201,19 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleSelectFolder = async () => {
-      try {
-          const r = await post<{path: string}>('/tools/select-folder', {});
-          if (r.path) {
-              // Now trigger download
-              setNeedsFolderSetup(false);
-              await post('/tools/download', {});
-          }
-      } catch (e: any) {
-          setError(e.message || "Failed to select folder");
-      }
-  };
-
-  const handleUseDefaultFolder = async () => {
-      try {
-          const r = await post<{path: string}>('/tools/use-default-folder', {});
-          if (r.path) {
-              setNeedsFolderSetup(false);
-              await post('/tools/download', {});
-          }
-      } catch (e: any) {
-          setError(e.message || "Failed to set default folder");
-      }
-  };
+  // ── Auto-poll devices every 3 seconds once app is ready ───────────────────────
+  useEffect(() => {
+    if (!appReady) return;
+    const pollTimer = setInterval(() => {
+      get<StatusResp>('/status')
+        .then(data => {
+          setStatus(data);
+          autoSelectDevice(data.devices);
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(pollTimer);
+  }, [appReady]);
 
   const autoSelectDevice = (devices: Device[]) => {
     const ready = devices.filter(d => d.state === 'device');
@@ -310,35 +347,22 @@ export default function App() {
   const connectedDevices = status?.devices.filter(d => d.state === 'device') ?? [];
   const unauthorizedDevices = status?.devices.filter(d => d.state === 'unauthorized') ?? [];
 
-  // ── Show Folder Selection Screen ──────────────────────────────────────────────
-  if (needsFolderSetup) {
-      return (
+  // ── Show startup/loading screen while backend boots ────────────────────────────
+  if (!appReady) {
+    return (
+      <ErrorBoundary>
         <div className="app">
           <div className="titlebar">
             <div className="titlebar__logo">
               <Smartphone size={18} />
-              <span>scrcpy</span>
+              <span>Android Control Center</span>
+              <span className="titlebar__version">v1.0</span>
             </div>
           </div>
-          <div className="download-screen">
-            <FolderOpen size={52} className="download-screen__icon" style={{color: 'var(--blue)'}} />
-            <div className="download-screen__title">Select Installation Folder</div>
-            <div className="download-screen__msg" style={{ maxWidth: 400, textAlign: 'center', marginBottom: 20 }}>
-              To connect to and mirror your Android device, we need to download <strong>ADB</strong> and <strong>scrcpy</strong> (~15MB). <br/><br/>
-              Please choose where you would like to store these tools.
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={handleSelectFolder} style={{ padding: '10px 20px', fontSize: 14 }}>
-                 <FolderOpen size={16} /> Browse / Select Folder...
-              </button>
-              <button className="btn btn-secondary" onClick={handleUseDefaultFolder} style={{ padding: '10px 20px', fontSize: 14 }}>
-                 Use Default Location
-              </button>
-            </div>
-            {error && <div className="error-alert" style={{marginTop: 20}}><AlertCircle size={14} />{error}</div>}
-          </div>
+          <StartupScreen message={startupMsg} />
         </div>
-      );
+      </ErrorBoundary>
+    );
   }
 
   // ── Show download screen ──────────────────────────────────────────────────────
@@ -358,8 +382,9 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      {/* ── Titlebar ── */}
+    <ErrorBoundary>
+      <div className="app">
+        {/* ── Titlebar ── */}
       <div className="titlebar">
         <div className="titlebar__logo">
           <Smartphone size={18} />
@@ -500,7 +525,7 @@ export default function App() {
           )}
 
           {/* No devices */}
-          {!scanning && connectedDevices.length === 0 && unauthorizedDevices.length === 0 && (
+          {connectedDevices.length === 0 && unauthorizedDevices.length === 0 && (
             <div className="card">
               <div className="empty-state">
                 <Smartphone size={44} className="empty-state__icon" />
@@ -666,6 +691,7 @@ export default function App() {
           onPaired={() => { setShowPairModal(false); scan(); }}
         />
       )}
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }

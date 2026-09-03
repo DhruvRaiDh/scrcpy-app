@@ -48,7 +48,7 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Serve the React static build if it exists (production mode)
+logger.info(f"Checking frontend distribution at: {FRONTEND_DIST} (is_dir={os.path.isdir(FRONTEND_DIST)})")
 if os.path.isdir(FRONTEND_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
 
@@ -62,6 +62,18 @@ if os.path.isdir(FRONTEND_DIST):
         if os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+else:
+    logger.error(f"Frontend dist NOT found at: {FRONTEND_DIST}")
+    @app.get("/")
+    def serve_fallback():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            "<html><body style='background:#0a0d12;color:#e8edf5;font-family:sans-serif;padding:40px;'>"
+            "<h2>Android Control Center — Server Running</h2>"
+            f"<p style='color:#ef4444;'>Warning: Frontend static files not found at: {FRONTEND_DIST}</p>"
+            "<p>API endpoints are active at <a style='color:#3b82f6;' href='/api/status'>/api/status</a></p>"
+            "</body></html>"
+        )
 
 
 def run_server():

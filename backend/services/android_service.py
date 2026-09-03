@@ -12,9 +12,10 @@ import re
 import json
 import subprocess
 import logging
+import sys
 import shutil
 import platform
-from services.config import get_tools_dir
+from services.config import get_tools_dir, DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -22,44 +23,49 @@ IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX   = platform.system() == "Linux"
 CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
-# Works in dev, PyInstaller --onedir, and PyInstaller --onefile
-def _get_data_dir():
-    # Data dir: user-writable app data
-    if IS_WINDOWS:
-        appdata = os.getenv('APPDATA', os.path.expanduser('~'))
-        data_dir = os.path.join(appdata, 'AndroidControlCenter')
-    else:
-        data_dir = os.path.join(os.path.expanduser('~'), '.local', 'share', 'AndroidControlCenter')
-    return data_dir
-
-DATA_DIR = _get_data_dir()
 PAIRED_FILE = os.path.join(DATA_DIR, 'paired_devices.json')
 
 def get_adb_exe() -> str | None:
-    tdir = get_tools_dir()
     name = 'adb.exe' if IS_WINDOWS else 'adb'
+    # 1. Check bundled tools inside PyInstaller executable first
+    if hasattr(sys, '_MEIPASS'):
+        bundled = os.path.join(sys._MEIPASS, 'bundled_tools', name)
+        if os.path.exists(bundled):
+            return bundled
+    # 2. Check user tools directory
+    tdir = get_tools_dir()
     if tdir:
         cand = os.path.join(tdir, name)
         if os.path.exists(cand):
             return cand
+    # 3. Check system PATH
     sys_path = shutil.which('adb')
     if sys_path:
         return sys_path
+    # 4. Check local development tools directory
     local_cand = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tools')), name)
     if os.path.exists(local_cand):
         return local_cand
     return None
 
 def get_scrcpy_exe() -> str | None:
-    tdir = get_tools_dir()
     name = 'scrcpy.exe' if IS_WINDOWS else 'scrcpy'
+    # 1. Check bundled tools inside PyInstaller executable first
+    if hasattr(sys, '_MEIPASS'):
+        bundled = os.path.join(sys._MEIPASS, 'bundled_tools', name)
+        if os.path.exists(bundled):
+            return bundled
+    # 2. Check user tools directory
+    tdir = get_tools_dir()
     if tdir:
         cand = os.path.join(tdir, name)
         if os.path.exists(cand):
             return cand
+    # 3. Check system PATH
     sys_path = shutil.which('scrcpy')
     if sys_path:
         return sys_path
+    # 4. Check local development tools directory
     local_cand = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tools')), name)
     if os.path.exists(local_cand):
         return local_cand
