@@ -135,13 +135,10 @@ export default function App() {
       try {
         const s = await get<ToolsStatus>('/tools/status');
         if (!s.installed) {
-            // Need to setup tools. Do we have a dir?
-            if (s.tools_dir) {
-                // Have dir but not installed, means download was interrupted or not started
-                setNeedsFolderSetup(true);
-            } else {
-                setNeedsFolderSetup(true);
-            }
+            // Silently use default folder and auto-start download — no picker needed
+            await post('/tools/use-default-folder', {});
+            await post('/tools/download', {});
+            // Don't show folder picker — just let the download screen appear
         } else {
           const sFull = await get<StatusResp>('/status');
           setStatus(sFull);

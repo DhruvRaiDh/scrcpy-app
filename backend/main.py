@@ -80,6 +80,12 @@ def wait_for_server(timeout: int = 10) -> bool:
 
 
 def main():
+    # On first launch, ensure tools directory is set to the default location
+    # This allows auto-download to begin immediately without user interaction
+    from services.config import get_tools_dir, set_tools_dir, get_default_tools_dir
+    if not get_tools_dir():
+        set_tools_dir(get_default_tools_dir())
+
     # Start auto-download of tools if missing
     start_download_if_needed()
 

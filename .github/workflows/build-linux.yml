@@ -33,6 +33,12 @@ jobs:
           chmod +x build/build_linux.py
           python3 build/build_linux.py
 
+      - name: Verify Binary
+        run: |
+          file dist/linux/scrcpy-app
+          ls -lh dist/linux/scrcpy-app
+          chmod +x dist/linux/scrcpy-app
+
       - name: Upload Standalone Linux Binary
         uses: actions/upload-artifact@v4
         with:
