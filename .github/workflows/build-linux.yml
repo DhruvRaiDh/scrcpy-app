@@ -26,7 +26,27 @@ jobs:
       - name: Install Linux Build Dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-dev libssl-dev
+          sudo apt install -y python3-dev libssl-dev wget
+
+      - name: Download and Bundle ADB + scrcpy into binary
+        run: |
+          mkdir -p backend/bundled_tools
+          
+          # Download scrcpy (includes adb inside)
+          echo "Downloading scrcpy Linux x86_64..."
+          wget -q "https://github.com/Genymobile/scrcpy/releases/download/v3.3.1/scrcpy-linux-x86_64-v3.3.1.tar.gz" -O /tmp/scrcpy.tar.gz
+          mkdir -p /tmp/scrcpy_extract
+          tar -xzf /tmp/scrcpy.tar.gz -C /tmp/scrcpy_extract
+          
+          # Copy the binaries we need
+          cp /tmp/scrcpy_extract/scrcpy-linux-x86_64-v3.3.1/scrcpy        backend/bundled_tools/scrcpy
+          cp /tmp/scrcpy_extract/scrcpy-linux-x86_64-v3.3.1/scrcpy-server  backend/bundled_tools/scrcpy-server
+          cp /tmp/scrcpy_extract/scrcpy-linux-x86_64-v3.3.1/adb            backend/bundled_tools/adb
+          
+          chmod +x backend/bundled_tools/scrcpy backend/bundled_tools/adb
+          
+          echo "Bundled tools:"
+          ls -lh backend/bundled_tools/
 
       - name: Build Standalone Linux Executable
         run: |

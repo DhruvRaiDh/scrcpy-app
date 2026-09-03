@@ -116,29 +116,27 @@ export default function App() {
       try {
         const prog = await get<DownloadProgress>('/tools/progress');
         if (prog.phase === 'idle') {
-          // Keep polling or stop? If we manually start, it will move from idle
+          // nothing yet
         } else if (prog.phase === 'done') {
           setDownloadProgress(null);
           clearInterval(timer);
           scan();
         } else if (prog.phase === 'error') {
           setDownloadProgress(prog);
-          // Do not clear interval on error, because user might select a folder and retry
         } else {
           setDownloadProgress(prog);
         }
       } catch { /* backend not ready yet */ }
     };
 
-    // First check status, if tools missing start polling
+    // On startup: tools are bundled on Linux — no folder picker needed ever
     const init = async () => {
       try {
         const s = await get<ToolsStatus>('/tools/status');
         if (!s.installed) {
-            // Silently use default folder and auto-start download — no picker needed
-            await post('/tools/use-default-folder', {});
-            await post('/tools/download', {});
-            // Don't show folder picker — just let the download screen appear
+          // Auto-download (handles both bundled-tools copy and actual internet download)
+          await post('/tools/use-default-folder', {});
+          await post('/tools/download', {});
         } else {
           const sFull = await get<StatusResp>('/status');
           setStatus(sFull);
@@ -146,15 +144,12 @@ export default function App() {
           setScanning(false);
         }
       } catch {
-        // Wait a bit and retry
         setTimeout(init, 800);
       }
     };
     init();
 
-    // Start a timer for download progress polling
     timer = setInterval(checkDownload, 800);
-
     return () => clearInterval(timer);
   }, []);
 

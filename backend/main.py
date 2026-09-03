@@ -99,13 +99,48 @@ def open_browser(url: str):
     webbrowser.open(url)
 
 
+def setup_bundled_tools():
+    """
+    On Linux PyInstaller builds: extract the bundled ADB + scrcpy to the user
+    data directory and mark them executable. This runs once and is instant.
+    """
+    if not IS_LINUX or not hasattr(sys, '_MEIPASS'):
+        return  # Not a Linux PyInstaller build — skip
+
+    import shutil, stat
+    bundled = os.path.join(sys._MEIPASS, 'bundled_tools')
+    if not os.path.isdir(bundled):
+        logger.warning("bundled_tools not found in bundle — will fall back to download.")
+        return
+
+    from services.config import get_default_tools_dir, set_tools_dir
+    tools_dir = get_default_tools_dir()
+    os.makedirs(tools_dir, exist_ok=True)
+    set_tools_dir(tools_dir)
+
+    for fname in os.listdir(bundled):
+        src = os.path.join(bundled, fname)
+        dst = os.path.join(tools_dir, fname)
+        if not os.path.exists(dst):
+            shutil.copy2(src, dst)
+        # Always ensure executables are marked +x
+        if fname in ('adb', 'scrcpy'):
+            st = os.stat(dst)
+            os.chmod(dst, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    logger.info(f"Bundled tools ready at: {tools_dir}")
+
+
 def main():
-    # On first launch, ensure tools directory is set to the default location
+    # Step 0: On Linux, extract bundled ADB + scrcpy (instant, no download)
+    setup_bundled_tools()
+
+    # Step 1: Ensure tools directory is configured
     from services.config import get_tools_dir, set_tools_dir, get_default_tools_dir
     if not get_tools_dir():
         set_tools_dir(get_default_tools_dir())
 
-    # Start auto-download of tools if missing
+    # Step 2: Download tools only if not already present (skipped on Linux with bundled tools)
     start_download_if_needed()
 
     # Start FastAPI server in background thread

@@ -2,6 +2,7 @@ tools/
 dist/
 build/_pyinstaller_tmp/
 backend/frontend_dist/
+backend/bundled_tools/
 backend/.venv/
 backend/__pycache__/
 backend/services/__pycache__/
