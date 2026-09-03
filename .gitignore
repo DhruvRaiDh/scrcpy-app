@@ -1,0 +1,13 @@
+tools/
+dist/
+build/_pyinstaller_tmp/
+backend/frontend_dist/
+backend/.venv/
+backend/__pycache__/
+backend/services/__pycache__/
+backend/api/__pycache__/
+backend/data/paired_devices.json
+frontend/node_modules/
+*.pyc
+*.spec
+*.zip

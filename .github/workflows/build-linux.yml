@@ -1,0 +1,41 @@
+name: Build Linux Binary
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libgirepository1.0-dev libcairo2-dev gir1.2-webkit2-4.0 gir1.2-gtk-3.0 python3-gi
+
+      - name: Build Standalone Linux Executable
+        run: |
+          chmod +x build/build_linux.py
+          python3 build/build_linux.py
+
+      - name: Upload Standalone Linux Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-app-linux
+          path: dist/linux/scrcpy-app
+          retention-days: 14
